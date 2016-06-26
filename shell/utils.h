@@ -18,8 +18,8 @@
 */
 
 
-#ifndef DEBUG_H
-#define DEBUG_H
+#ifndef UTILS_H 
+#define UTILS_H 1 
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +38,29 @@ struct qelem {
     char *q_data;
 };
 typedef struct qelem qelem;
+
+#define LIST_PUSH(head, tail, data) \
+   do { qelem *q = malloc (sizeof (qelem)); \
+       q->q_forw = q->q_back = NULL; \
+       q->q_data = (void*) data; \
+       insque (q, tail); \
+       tail = q; \
+       if (head == NULL) \
+            head = q; \
+   } while (0) 
+
+/*does not free anything*/
+#define LIST_REM(head, tail, q) \
+    do { \
+        if (q != NULL) { \
+            remque (q); \
+            if (q == head) \
+                head = head->q_forw; \
+            if (q == tail) \
+                tail = tail->q_back; \
+        }\
+    }while (0)
+
 
 #ifdef POSIXEG_DEBUG
 

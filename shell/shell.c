@@ -46,18 +46,6 @@ pid_t shell_pgid;
 /*file descriptor from which the shell interacts with*/
 int shell_terminal;
 
-char* builtin_cmd [] = {"cd", "jobs", NULL};
-
-int builtin_cd (process_t *proc) {
-    return 0;
-}
-int builtin_jobs (process_t *proc) {
-    return 0;
-}
-int (*builtin_func[2]) (process_t *) = {builtin_cd, builtin_jobs};
-
-
-
 
 /*
 TODO: put this in utils.h as a define function 
@@ -103,58 +91,59 @@ void _sigchld_handler (int signum) {
     for (q = job_list_head; q != NULL; q = q->q_forw) {
         
         char completed_all = 1;
+        char stopped_all = 1;
         job = (job_t*) q->q_data;
+
+        /*printf ("%p %d\n", job, job->pgid);*/
+
         for (p = job->process_list_head; p != NULL; p = p->q_forw) {
 
             proc = (process_t*) p->q_data;
             if (proc->completed)
                 continue;
-            printf ("%d\n", proc->pid );
-            if (waitpid (proc->pid, &proc->status, WNOHANG)) {
-                proc->status = (WIFEXITED (proc->status)) ? WEXITSTATUS (proc->status): -1;
-                proc->completed = 1;
+            if (waitpid (proc->pid, &proc->status, WNOHANG | WUNTRACED)) {
+                if (WIFEXITED (proc->status)) {
+                    proc->completed = 1;
+                    proc->status = WEXITSTATUS (proc->status);
+                }
+                else if (WIFSTOPPED (proc->status)) 
+                    proc->stopped = 1;
+                completed_all = completed_all && proc->completed;
+                stopped_all = stopped_all && proc->stopped;
             }
-            else 
-                completed_all = 0;
         }
         /*
-        we do not remove now 
+           we only remove if the job is foreground
          */
         if (completed_all) {
-            if (IS_FG_JOB (job)) 
+            if (IS_FG_JOB (job)) {
                 fg_job = NULL;
-            job->completed = 1;
+                LIST_REM (job_list_head, job_list_tail, q);
+                p = q->q_back;
+                release_job ((job_t*) q->q_data);
+                free (q);
+                q = p;
+                if (q == NULL) break;
+            }
+            else
+                job->completed = 1;
+        }
+        if (stopped_all) {
+            if (IS_FG_JOB (job))
+                fg_job = NULL;
+            job->stopped = 1;
         }
     }
 }
 
 int run_fg_job() {
-    while (fg_job != NULL)
+    while (fg_job != NULL && fg_job->completed == 0)
         pause();
-    tcsetpgrp (STDIN_FILENO, shell_pgid);
+    fg_job = NULL;
+    tcsetpgrp (STDIN_FILENO, shell_pgid); 
+    /*here we would have to set up terminal options*/
+
     return EXIT_SUCCESS;
-}
-
-/*
-pushes job to the job_list 
- */
-void job_list_push (job_t *job) {
-
-    qelem *new_elem = malloc (sizeof (qelem));
-    new_elem->q_data = (void *) job;
-    insque (new_elem, job_list_tail);
-    if (job_list_tail == NULL)
-        job_list_head = new_elem;
-    job_list_tail = new_elem;
-}
-
-
-
-char chk_builtincmd (process_t *proc) {
-    for (j = 0; builtin_cmd[j] != NULL; ++j)
-        if (strcmp (builtin_cmd[j], proc->argv[0])==0)
-            return 1;
-    return 0;
 }
 
 /*
@@ -187,7 +176,7 @@ int create_job (const char *cmd) {
             io[i] = open (cmd_line->io[i], iofl[i], S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 
             if (io[i] < 0) {
-                puts ("Problem opening file");
+                printf ("%s: %s\n", cmd_line->io[i], strerror (errno));
                 goto release_stuff;
             }
         }
@@ -222,7 +211,7 @@ int create_job (const char *cmd) {
     if (!cmd_line->is_nonblock)
         fg_job = job;
 
-    job_list_push (job);
+    LIST_PUSH (job_list_head, job_list_tail, job);
 
     act.sa_handler = _sigchld_handler;
     sigemptyset (&act.sa_mask);
@@ -234,7 +223,7 @@ int create_job (const char *cmd) {
         sigaction (SIGCHLD, &act, NULL);
         
 
-    /*print_job (job);*/
+    /*print_job (job); */
 
 
     /*printf ("%d\n", run_process(proc, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO)); */
@@ -242,7 +231,8 @@ int create_job (const char *cmd) {
 
     /*TODO: find a better name for this*/
 release_stuff:
-    release_job (job);
+    if (ret != 0)
+        release_job (job);
     release_cmd_line (cmd_line);
     return ret;
 }

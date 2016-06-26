@@ -39,7 +39,11 @@ int main (int argc, char *argv[]) {
         return -1;
     }
 
-    while (printf("$ "), fgets (cmd, 256, stdin) != NULL) {
+    while (!feof (stdin)) {
+        printf("$ "); 
+        if (fgets (cmd, 256, stdin)==NULL)
+            putchar('\n'); 
+
         ret = create_job (cmd);
         if (IS_SYNTAX_ERROR (ret)) {
             puts ("Syntax Error!");

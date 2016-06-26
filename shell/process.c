@@ -29,6 +29,28 @@
 #include "process.h"
 
 
+char* builtin_cmd [] = {"cd", "jobs", NULL};
+
+int builtin_cd (process_t *proc, int input_redir, int output_redir, int error_redir) {
+    if (proc->argv[1] != NULL)
+        return chdir (proc->argv[1]);
+    return 0;
+}
+
+int builtin_jobs (process_t *proc, int input_redir, int output_redir, int error_redir) {
+    return 0;
+}
+int (*builtin_func[2]) (process_t *, int, int, int) = {builtin_cd, builtin_jobs};
+
+/*checks if proc is a bultin cmd and returns the id of the function*/
+int chk_builtincmd (process_t *proc) {
+    int j;
+    for (j = 0; builtin_cmd[j] != NULL; ++j)
+        if (strcmp (builtin_cmd[j], proc->argv[0])==0)
+            return j;
+    return -1;
+}
+
 process_t* new_process (const char *command) {
     size_t i;
     char *token, *cmd;   
@@ -57,8 +79,19 @@ void release_process (process_t *proc) {
     free (proc);
 }
 
+/*if pid is 0, then it's a builtin function*/
 pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redir, int error_redir, char is_fg) {
     pid_t pid;
+    int builtin_id;
+    builtin_id = chk_builtincmd (proc);
+
+    if (builtin_id != -1) {
+        proc->status = builtin_func[builtin_id] (proc, input_redir, output_redir, error_redir);
+        proc->completed = 1;
+        proc->pid = 0;
+        return proc->pid;
+    }
+
     pid = fork();
 
     /*returns -1 if fork failed*/
@@ -72,15 +105,16 @@ pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redi
             pgid = pid;
         setpgid (pid, pgid);
 
-        if (is_fg)
+        if (is_fg) {
             tcsetpgrp (STDIN_FILENO, pgid);
 
-        signal (SIGINT, SIG_DFL);
-        signal (SIGQUIT, SIG_DFL);
-        signal (SIGTSTP, SIG_DFL);
-        signal (SIGTTIN, SIG_DFL);
-        signal (SIGTTOU, SIG_DFL);
-        signal (SIGCHLD, SIG_DFL);
+            signal (SIGINT, SIG_DFL);
+            signal (SIGQUIT, SIG_DFL);
+            signal (SIGTSTP, SIG_DFL);
+            signal (SIGTTIN, SIG_DFL);
+            signal (SIGTTOU, SIG_DFL);
+            signal (SIGCHLD, SIG_DFL);
+        }
 
         /*io redirection*/
         if (input_redir != STDIN_FILENO) {
@@ -99,10 +133,13 @@ pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redi
         execvp (proc->argv[0], proc->argv);
 
         /*we have something wrong */
+        /*
         write (output_redir, proc->argv[0], strlen (proc->argv[0]));
         write (output_redir, ": ", 2);
         write (output_redir, strerror (errno), strlen (strerror (errno)));
         write (output_redir, "\n", 1);
+        release_process (proc);
+        */
 
         exit (RUN_PROC_FAILURE);
     }

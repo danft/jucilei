@@ -107,6 +107,9 @@ int run_job (job_t *job, char is_fg) {
     /*
        not sure if this rly works :)
      */
+
+    job->completed = 1;
+
     for (ptr = job->process_list_head; ptr != NULL; ptr = ptr->q_forw) {
         if (ptr->q_forw != NULL) 
             sysfail (pipe (pipefd)<0, -1);
@@ -116,10 +119,14 @@ int run_job (job_t *job, char is_fg) {
         proc = (process_t *)ptr->q_data;
 
         pid = run_process (proc, pgid, input_redir, output_redir, error_redir, is_fg);
-        pgid = (!pgid) ? pid : pgid;
+        /*0 indicates this process is a builtin function*/
+        if (pid != 0) {
+            pgid = (!pgid) ? pid : pgid;
 
-        /*putting everyone in the same process group*/
-        setpgid (pid, pgid);
+            /*putting everyone in the same process group*/
+            setpgid (pid, pgid);
+        }
+        job->completed = job->completed && proc->completed;
 
         /*closin pipes*/
         if (output_redir != job->io[STDOUT_FILENO])
