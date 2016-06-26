@@ -23,6 +23,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include "utils.h"
@@ -43,6 +45,19 @@ job_t *fg_job = NULL;
 pid_t shell_pgid;
 /*file descriptor from which the shell interacts with*/
 int shell_terminal;
+
+char* builtin_cmd [] = {"cd", "jobs", NULL};
+
+int builtin_cd (process_t *proc) {
+    return 0;
+}
+int builtin_jobs (process_t *proc) {
+    return 0;
+}
+int (*builtin_func[2]) (process_t *) = {builtin_cd, builtin_jobs};
+
+
+
 
 /*
 TODO: put this in utils.h as a define function 
@@ -89,11 +104,12 @@ void _sigchld_handler (int signum) {
         
         char completed_all = 1;
         job = (job_t*) q->q_data;
-        for (p = fg_job->process_list_head; p != NULL; p = p->q_forw) {
+        for (p = job->process_list_head; p != NULL; p = p->q_forw) {
 
             proc = (process_t*) p->q_data;
             if (proc->completed)
                 continue;
+            printf ("%d\n", proc->pid );
             if (waitpid (proc->pid, &proc->status, WNOHANG)) {
                 proc->status = (WIFEXITED (proc->status)) ? WEXITSTATUS (proc->status): -1;
                 proc->completed = 1;
@@ -132,22 +148,52 @@ void job_list_push (job_t *job) {
     job_list_tail = new_elem;
 }
 
+
+
+char chk_builtincmd (process_t *proc) {
+    for (j = 0; builtin_cmd[j] != NULL; ++j)
+        if (strcmp (builtin_cmd[j], proc->argv[0])==0)
+            return 1;
+    return 0;
+}
+
 /*
 returns -1 in case of error (cmd coundn't be executed) 
  */
 int create_job (const char *cmd) {
 
-    int aux; /*used to get return values*/
+    int i, aux; /*used to get return values*/
     int ret = EXIT_SUCCESS; /*return value*/
+
+    /*io redirection stuff*/
+    int io[3] = {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
+    int iofl[3] = {O_RDONLY, O_WRONLY | O_CREAT, O_WRONLY | O_CREAT}; /*io flag for each one of the input redirection*/
+
+
     process_t *proc = NULL;
     cmd_line_t *cmd_line = NULL;
     qelem *ptr;
-    job_t *job;
+    job_t *job = NULL;
     struct sigaction oact, act;
 
     cmd_line = new_cmd_line();
+
     aux = parse_cmd_line (cmd_line, cmd);
-    job = new_job(STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO);
+
+    /*input redir file*/
+    for (i=0; i<3; ++i) {
+        if (cmd_line->io[i] != NULL) {
+            /*printf ("%d %s\n", i, (cmd_line->io[i])); */
+            io[i] = open (cmd_line->io[i], iofl[i], S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+
+            if (io[i] < 0) {
+                puts ("Problem opening file");
+                goto release_stuff;
+            }
+        }
+    }
+
+    job = new_job(io[STDIN_FILENO], io[STDOUT_FILENO], io[STDERR_FILENO]);
 
     if (!IS_CMD_LINE_OK (aux)) {
         ret = aux;
@@ -196,6 +242,7 @@ int create_job (const char *cmd) {
 
     /*TODO: find a better name for this*/
 release_stuff:
+    release_job (job);
     release_cmd_line (cmd_line);
     return ret;
 }
