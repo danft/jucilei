@@ -54,10 +54,10 @@ typedef struct qelem qelem;
     do { \
         if (q != NULL) { \
             remque (q); \
-            if (q == head) \
-                head = head->q_forw; \
             if (q == tail) \
                 tail = tail->q_back; \
+            if (q == head) \
+                head = head->q_forw; \
         }\
     }while (0)
 

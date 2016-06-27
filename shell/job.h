@@ -29,6 +29,9 @@ typedef struct {
    qelem *process_list_head, *process_list_tail; 
    pid_t pgid; /*process group id*/
    int io[3]; /*0 -> input, 1->output, 2 -> error*/
+
+   int jobid; /*used in jobs, fg and bg*/
+
    char completed, stopped;
 }job_t;
 

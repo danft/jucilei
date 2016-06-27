@@ -123,6 +123,11 @@ int parse_cmd_line (cmd_line_t *cmd_line, const char *cmd) {
     while (cmd_len>0 && (iscntrl (cmd[cmd_len-1]) || isblank (cmd[cmd_len - 1])))
         --cmd_len;
 
+    if (cmd_len == 0) {
+        ret |= EMPTY_LINE;
+        return ret;
+    }
+
     /*assuming that the last thing is io redirection or nonblocking indicator*/
     for (i=0; i < cmd_len && !IS_IO_REDIR (cmd[i]) && !IS_NONBLOCK (cmd[i]); ++i) {
         if (IS_PIPE (cmd[i])) {

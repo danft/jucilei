@@ -37,6 +37,9 @@
 /**/
 qelem *job_list_head, *job_list_tail;
 
+/*the top element is always the one that got modified the latest*/
+qelem *job_stack;
+
 /*
    job which is currently running as foreground
  */
@@ -48,24 +51,11 @@ int shell_terminal;
 
 
 /*
-TODO: put this in utils.h as a define function 
- */
-void job_list_rem (qelem *q) {
-    remque (q);
-    if (q == job_list_head)
-        job_list_head = job_list_head->q_forw;
-    if (q == job_list_tail)
-        job_list_tail = job_list_tail->q_back;
-    release_job ((job_t*) q->q_data);
-    free (q);
-}
-
-/*
 returns -1 in case of failure 
  */
 int shell_init () {
     fg_job = NULL;
-    job_list_head = job_list_tail = NULL;
+    job_list_head = job_list_tail = job_stack = NULL;
     signal (SIGINT, SIG_IGN);
     signal (SIGQUIT, SIG_IGN);
     signal (SIGTSTP, SIG_IGN);
@@ -83,12 +73,30 @@ int shell_init () {
     return EXIT_SUCCESS;
 }
 
+void update_job_stack() {
+    job_t **job;
+    qelem *q;
+    while (job_stack != NULL) {
+        job = (job_t**) job_stack->q_data;
+        if (*job == NULL) {
+            q = job_stack;
+            LIST_REM (job_stack, job_stack, q);
+        }
+        else break;
+    }
+}
+
+void job_stack_push (job_t *job) {
+    LIST_PUSH (job_stack, job_stack, &job);
+}
+
+
 void _sigchld_handler (int signum) {
     qelem *p, *q;
     process_t *proc;
     job_t *job;
 
-    for (q = job_list_head; q != NULL; q = q->q_forw) {
+    for (q = job_list_head; q != NULL; q = (q != NULL) ? q->q_forw : job_list_head) {
         
         char completed_all = 1;
         char stopped_all = 1;
@@ -108,14 +116,16 @@ void _sigchld_handler (int signum) {
                 }
                 else if (WIFSTOPPED (proc->status)) 
                     proc->stopped = 1;
-                completed_all = completed_all && proc->completed;
-                stopped_all = stopped_all && proc->stopped;
             }
+            completed_all = completed_all && proc->completed;
+            stopped_all = stopped_all && proc->stopped;
         }
+
         /*
            we only remove if the job is foreground
          */
         if (completed_all) {
+            job->completed = 1;
             if (IS_FG_JOB (job)) {
                 fg_job = NULL;
                 LIST_REM (job_list_head, job_list_tail, q);
@@ -123,10 +133,7 @@ void _sigchld_handler (int signum) {
                 release_job ((job_t*) q->q_data);
                 free (q);
                 q = p;
-                if (q == NULL) break;
             }
-            else
-                job->completed = 1;
         }
         if (stopped_all) {
             if (IS_FG_JOB (job))
@@ -139,11 +146,44 @@ void _sigchld_handler (int signum) {
 int run_fg_job() {
     while (fg_job != NULL && fg_job->completed == 0)
         pause();
+
+    if (fg_job != NULL) { /*this will only happen if the job has only builtin commands */
+        qelem *ptr;
+        for (ptr = job_list_head; ptr != NULL; ptr = ptr->q_forw) {
+            if ((void *)ptr->q_data == (void *)fg_job) {
+                LIST_REM (job_list_head, job_list_tail, ptr);
+                release_job (fg_job);
+                free (ptr);
+                fg_job = NULL;
+                break;
+            }
+        }
+    }
+
+
     fg_job = NULL;
     tcsetpgrp (STDIN_FILENO, shell_pgid); 
     /*here we would have to set up terminal options*/
 
     return EXIT_SUCCESS;
+}
+
+void print_job_list(int output_redir, int error_redir) {
+    qelem *ptr, *aux;
+    job_t *job;
+
+    for (ptr = job_list_head; ptr != NULL; ptr = (ptr) ? ptr->q_forw: job_list_head) {
+        job = (job_t*) ptr->q_data;
+        print_job (job);
+
+        if (job->completed) {
+            LIST_REM (job_list_head, job_list_tail, ptr);
+            aux = ptr->q_back;
+            free (ptr);
+            ptr = aux;
+            release_job (job);
+        }
+    }
 }
 
 /*
@@ -183,6 +223,8 @@ int create_job (const char *cmd) {
     }
 
     job = new_job(io[STDIN_FILENO], io[STDOUT_FILENO], io[STDERR_FILENO]);
+
+    job->jobid = (job_list_tail == NULL) ? 1 : ((job_t*)job_list_tail->q_data)->jobid + 1;
 
     if (!IS_CMD_LINE_OK (aux)) {
         ret = aux;

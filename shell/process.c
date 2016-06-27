@@ -37,9 +37,16 @@ int builtin_cd (process_t *proc, int input_redir, int output_redir, int error_re
     return 0;
 }
 
+/*this one is defined in shell.c*/
+extern void print_job_list (int, int);
+
 int builtin_jobs (process_t *proc, int input_redir, int output_redir, int error_redir) {
+    if (proc == NULL)
+        return -1;
+    print_job_list (output_redir, error_redir);
     return 0;
 }
+
 int (*builtin_func[2]) (process_t *, int, int, int) = {builtin_cd, builtin_jobs};
 
 /*checks if proc is a bultin cmd and returns the id of the function*/
@@ -105,16 +112,16 @@ pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redi
             pgid = pid;
         setpgid (pid, pgid);
 
-        if (is_fg) {
+        if (is_fg) 
             tcsetpgrp (STDIN_FILENO, pgid);
 
-            signal (SIGINT, SIG_DFL);
-            signal (SIGQUIT, SIG_DFL);
-            signal (SIGTSTP, SIG_DFL);
-            signal (SIGTTIN, SIG_DFL);
-            signal (SIGTTOU, SIG_DFL);
-            signal (SIGCHLD, SIG_DFL);
-        }
+        signal (SIGINT, SIG_DFL);
+        signal (SIGQUIT, SIG_DFL);
+        signal (SIGTSTP, SIG_DFL);
+        signal (SIGTTIN, SIG_DFL);
+        signal (SIGTTOU, SIG_DFL);
+        signal (SIGCHLD, SIG_DFL);
+        
 
         /*io redirection*/
         if (input_redir != STDIN_FILENO) {
@@ -133,13 +140,11 @@ pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redi
         execvp (proc->argv[0], proc->argv);
 
         /*we have something wrong */
-        /*
         write (output_redir, proc->argv[0], strlen (proc->argv[0]));
         write (output_redir, ": ", 2);
         write (output_redir, strerror (errno), strlen (strerror (errno)));
         write (output_redir, "\n", 1);
         release_process (proc);
-        */
 
         exit (RUN_PROC_FAILURE);
     }

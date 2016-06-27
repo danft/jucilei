@@ -32,6 +32,7 @@ int main (int argc, char *argv[]) {
 
     char cmd[256];
     int ret;
+    char hinter = 0;
 
     ret = shell_init() ;
 
@@ -40,9 +41,15 @@ int main (int argc, char *argv[]) {
     }
 
     while (!feof (stdin)) {
-        printf("$ "); 
-        if (fgets (cmd, 256, stdin)==NULL)
-            putchar('\n'); 
+
+        if (!hinter)
+            printf ("$ ");
+        hinter = 0;
+
+        if (fgets (cmd, 256, stdin)==NULL) {
+            hinter = 1;
+            continue;
+        }
 
         ret = create_job (cmd);
         if (IS_SYNTAX_ERROR (ret)) {

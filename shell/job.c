@@ -143,13 +143,22 @@ int run_job (job_t *job, char is_fg) {
 }
 
 void print_job (job_t *job) {
-    int i=1;
     qelem *ptr = job->process_list_head;
-    printf( "Proc Group ID: %d\n", job->pgid);
-    while (ptr != NULL) {
-        printf ("Process [%d] PID %d\n", i++, ((process_t*)ptr->q_data)->pid);
-        ptr = ptr->q_forw;
+    process_t *proc;
+    int j;
+
+    printf ("[%d] %s\t", job->jobid, (job->completed ? "completed": 
+                job->stopped ? "stopped" : "running"));
+
+    for (;ptr != NULL; ptr = ptr->q_forw) {
+        proc = (process_t*) ptr->q_data;
+        for (j = 0;proc->argv[j] != NULL; j++) {
+            printf ("%s ", proc->argv[j]);
+        }
+        if (ptr->q_forw != NULL)
+            printf ("| ");
     }
+    puts("");
 }
 
 
