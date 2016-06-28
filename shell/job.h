@@ -33,6 +33,9 @@ typedef struct {
    int jobid; /*used in jobs, fg and bg*/
 
    char completed, stopped;
+
+   size_t lch; /*last change*/ 
+
 }job_t;
 
 job_t* new_job () ;
@@ -50,19 +53,19 @@ returns 1 if every process finished, 0 otherwise
  */
 char job_completed (job_t *job);
 
+/*set the stopped value of the job and all of 
+ its process*/
+void job_set_stopped (job_t *job, char vsto);
 
 /*
 runs every process in the pipeline 
  */
 int run_job (job_t *job, char is_fg);
 
-/*
-   returns a process with the given pid
-   NULL in case it doesn't exist
- */
-process_t* get_process_pid (job_t *job, pid_t pid);
+/*prints the entire job command line into fdes*/
+void print_job_cmd (job_t *job, int fdes) ; 
 
-void print_job (job_t *job);
-
+/*print job info into file with file descriptor fdes*/
+void print_job (job_t *job, char is_curr, int fdes);
 
 #endif

@@ -29,7 +29,7 @@
 #include "process.h"
 
 
-char* builtin_cmd [] = {"cd", "jobs", NULL};
+char* builtin_cmd [] = {"cd", "jobs", "fg", "bg", "exit", "quit", NULL};
 
 int builtin_cd (process_t *proc, int input_redir, int output_redir, int error_redir) {
     if (proc->argv[1] != NULL)
@@ -37,8 +37,11 @@ int builtin_cd (process_t *proc, int input_redir, int output_redir, int error_re
     return 0;
 }
 
-/*this one is defined in shell.c*/
+/*these are defined in shell.c*/
 extern void print_job_list (int, int);
+extern int shell_job_fg (int, int, int);
+extern int shell_job_bg (int, int, int);
+extern void shell_exit ();
 
 int builtin_jobs (process_t *proc, int input_redir, int output_redir, int error_redir) {
     if (proc == NULL)
@@ -47,7 +50,27 @@ int builtin_jobs (process_t *proc, int input_redir, int output_redir, int error_
     return 0;
 }
 
-int (*builtin_func[2]) (process_t *, int, int, int) = {builtin_cd, builtin_jobs};
+int builtin_fg (process_t *proc, int input_redir, int output_redir, int error_redir) {
+    if (proc == NULL)
+        return -1;
+    return shell_job_fg ((proc->argv[1] != NULL) ? atoi (proc->argv[1]): 0, output_redir, error_redir);
+}
+
+int builtin_bg (process_t *proc, int input_redir, int output_redir, int error_redir) {
+    if (proc == NULL)
+        return -1;
+    return shell_job_bg ((proc->argv[1] != NULL) ? atoi (proc->argv[1]): 0, output_redir, error_redir);
+}
+
+int builtin_exit (process_t *proc, int input_redir, int output_redir, int error_redir) {
+    if (proc == NULL)
+        return -1;
+    shell_exit();
+    return EXIT_SUCCESS;
+}
+
+
+int (*builtin_func[6]) (process_t *, int, int, int) = {builtin_cd, builtin_jobs, builtin_fg, builtin_bg, builtin_exit, builtin_exit};
 
 /*checks if proc is a bultin cmd and returns the id of the function*/
 int chk_builtincmd (process_t *proc) {
@@ -111,9 +134,6 @@ pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redi
         if (!pgid)
             pgid = pid;
         setpgid (pid, pgid);
-
-        if (is_fg) 
-            tcsetpgrp (STDIN_FILENO, pgid);
 
         signal (SIGINT, SIG_DFL);
         signal (SIGQUIT, SIG_DFL);

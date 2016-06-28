@@ -37,4 +37,4 @@ int create_job (const char *cmd);
 runs the current job that is in foreground mode 
 if there's none it just returns
  */
-int run_fg_job();
+int run_fgjob();

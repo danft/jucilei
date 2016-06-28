@@ -35,6 +35,7 @@ job_t* new_job (int input_redir, int output_redir, int error_redir) {
     created_job->io[2]=error_redir;
     created_job->completed = 0;
     created_job->stopped = 0;
+    created_job->lch = 0;
     return created_job;
 }
 
@@ -136,37 +137,40 @@ int run_job (job_t *job, char is_fg) {
 
         input_redir = pipefd[0];
     }
-
     job->pgid = pgid;
+    if (is_fg)
+        tcsetpgrp (STDIN_FILENO, job->pgid);
 
     return EXIT_SUCCESS;
 }
 
-void print_job (job_t *job) {
-    qelem *ptr = job->process_list_head;
+void print_job_cmd (job_t *job, int fdes) {
+    qelem *ptr;
     process_t *proc;
     int j;
 
-    printf ("[%d] %s\t", job->jobid, (job->completed ? "completed": 
-                job->stopped ? "stopped" : "running"));
-
-    for (;ptr != NULL; ptr = ptr->q_forw) {
+    for (ptr = job->process_list_head;ptr != NULL; ptr = ptr->q_forw) {
         proc = (process_t*) ptr->q_data;
         for (j = 0;proc->argv[j] != NULL; j++) {
-            printf ("%s ", proc->argv[j]);
+            dprintf (fdes, "%s ", proc->argv[j]);
         }
         if (ptr->q_forw != NULL)
-            printf ("| ");
+            dprintf (fdes, "| ");
     }
-    puts("");
 }
 
+void print_job (job_t *job, char is_curr, int fdes) {
 
-process_t* get_process_pid (job_t *job, pid_t pid) {
-    qelem *ptr = job->process_list_head;
-    for (;ptr != NULL; ptr = ptr->q_forw)
-        if (((process_t*)ptr->q_data)->pid == pid)
-            return (process_t*) ptr->q_data;
-    return NULL;
+    dprintf (fdes, "[%d]%c %s\t", job->jobid, (is_curr) ? '+': ' ', (job->completed ? "completed": 
+                job->stopped ? "stopped" : "running"));
+
+    print_job_cmd (job, fdes);
 }
 
+void job_set_stopped (job_t *job, char vsto) {
+    qelem *ptr;
+    job->stopped = 0;
+    for (ptr = job->process_list_head; ptr != NULL; ptr = ptr->q_forw) {
+        ((process_t*)ptr->q_data)->stopped = 0;
+    }
+}

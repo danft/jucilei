@@ -32,30 +32,33 @@
 #include "process.h"
 #include "job.h"
 
-#define IS_FG_JOB(job) (((job_t*)(job))==fg_job) 
+#define IS_FG_JOB(job) (((job_t*)(job))==fgjob) 
 
 /**/
 qelem *job_list_head, *job_list_tail;
 
 /*the top element is always the one that got modified the latest*/
-qelem *job_stack;
 
 /*
    job which is currently running as foreground
  */
-job_t *fg_job = NULL;
+job_t *fgjob = NULL;
 
 pid_t shell_pgid;
 /*file descriptor from which the shell interacts with*/
 int shell_terminal;
+char hexit;
 
+size_t shell_cnt; /*used to identify the last changed process*/
 
 /*
 returns -1 in case of failure 
  */
 int shell_init () {
-    fg_job = NULL;
-    job_list_head = job_list_tail = job_stack = NULL;
+    hexit = 0;
+    fgjob = NULL;
+    shell_cnt = 0;
+    job_list_head = job_list_tail = NULL;
     signal (SIGINT, SIG_IGN);
     signal (SIGQUIT, SIG_IGN);
     signal (SIGTSTP, SIG_IGN);
@@ -73,23 +76,6 @@ int shell_init () {
     return EXIT_SUCCESS;
 }
 
-void update_job_stack() {
-    job_t **job;
-    qelem *q;
-    while (job_stack != NULL) {
-        job = (job_t**) job_stack->q_data;
-        if (*job == NULL) {
-            q = job_stack;
-            LIST_REM (job_stack, job_stack, q);
-        }
-        else break;
-    }
-}
-
-void job_stack_push (job_t *job) {
-    LIST_PUSH (job_stack, job_stack, &job);
-}
-
 
 void _sigchld_handler (int signum) {
     qelem *p, *q;
@@ -102,18 +88,14 @@ void _sigchld_handler (int signum) {
         char stopped_all = 1;
         job = (job_t*) q->q_data;
 
-        /*printf ("%p %d\n", job, job->pgid);*/
-
         for (p = job->process_list_head; p != NULL; p = p->q_forw) {
 
             proc = (process_t*) p->q_data;
             if (proc->completed)
                 continue;
             if (waitpid (proc->pid, &proc->status, WNOHANG | WUNTRACED)) {
-                if (WIFEXITED (proc->status)) {
+                if (WIFEXITED (proc->status) || WIFSIGNALED (proc->status)) 
                     proc->completed = 1;
-                    proc->status = WEXITSTATUS (proc->status);
-                }
                 else if (WIFSTOPPED (proc->status)) 
                     proc->stopped = 1;
             }
@@ -126,8 +108,9 @@ void _sigchld_handler (int signum) {
          */
         if (completed_all) {
             job->completed = 1;
+            job->lch = ++shell_cnt;
             if (IS_FG_JOB (job)) {
-                fg_job = NULL;
+                fgjob = NULL;
                 LIST_REM (job_list_head, job_list_tail, q);
                 p = q->q_back;
                 release_job ((job_t*) q->q_data);
@@ -136,32 +119,34 @@ void _sigchld_handler (int signum) {
             }
         }
         if (stopped_all) {
+            job->lch = ++shell_cnt;
             if (IS_FG_JOB (job))
-                fg_job = NULL;
+                fgjob = NULL;
             job->stopped = 1;
         }
     }
 }
 
-int run_fg_job() {
-    while (fg_job != NULL && fg_job->completed == 0)
-        pause();
+int run_fgjob() {
 
-    if (fg_job != NULL) { /*this will only happen if the job has only builtin commands */
+    while (fgjob != NULL && fgjob->completed == 0) {
+        pause();
+    }
+
+    if (fgjob != NULL) { /*this will only happen if the job has only builtin commands */
         qelem *ptr;
         for (ptr = job_list_head; ptr != NULL; ptr = ptr->q_forw) {
-            if ((void *)ptr->q_data == (void *)fg_job) {
+            if (IS_FG_JOB ((job_t*) ptr->q_data)) {
                 LIST_REM (job_list_head, job_list_tail, ptr);
-                release_job (fg_job);
+                release_job (fgjob);
                 free (ptr);
-                fg_job = NULL;
+                fgjob = NULL;
                 break;
             }
         }
     }
 
-
-    fg_job = NULL;
+    fgjob = NULL;
     tcsetpgrp (STDIN_FILENO, shell_pgid); 
     /*here we would have to set up terminal options*/
 
@@ -171,10 +156,22 @@ int run_fg_job() {
 void print_job_list(int output_redir, int error_redir) {
     qelem *ptr, *aux;
     job_t *job;
+    size_t mch = 0;
+    int curr_jobid = 0;
+
+    for (ptr = job_list_head; ptr != NULL; ptr = ptr->q_forw) {
+        job = (job_t *)ptr->q_data;
+        if (job->lch > mch || (job->lch == mch && job->jobid > curr_jobid)) {
+            curr_jobid = job->jobid;
+            mch = job->lch;
+        }
+    }
 
     for (ptr = job_list_head; ptr != NULL; ptr = (ptr) ? ptr->q_forw: job_list_head) {
         job = (job_t*) ptr->q_data;
-        print_job (job);
+
+        print_job (job, job->jobid == curr_jobid, output_redir);
+        write (output_redir, "\n", 1);
 
         if (job->completed) {
             LIST_REM (job_list_head, job_list_tail, ptr);
@@ -185,6 +182,95 @@ void print_job_list(int output_redir, int error_redir) {
         }
     }
 }
+
+job_t* get_job_id (int jobid) {
+    qelem *ptr;
+    job_t *job;
+
+    for (ptr = job_list_head; ptr != NULL; ptr = ptr->q_forw) {
+        job = (job_t*) ptr->q_data;
+        if (job->jobid == jobid)
+            return job;
+    }
+    return NULL;
+}
+
+job_t* get_curr_job () {
+    size_t mch = 0; 
+    int jobid = 0;
+    qelem *ptr;
+    job_t *rjob = NULL, *job;
+
+    for (ptr = job_list_head; ptr != NULL; ptr = ptr->q_forw) {
+        job = (job_t*) ptr->q_data;
+        if (mch < job->lch || (mch == job->lch && jobid < job->jobid)) {
+            mch = job->lch;
+            jobid = job->jobid;
+            rjob = job;
+        }
+    }
+    return rjob;
+}
+
+int set_fgjob (job_t *job) {
+    if (job == NULL)
+        return -1;
+
+    if (job->stopped) {
+        if (kill (-job->pgid, SIGCONT) < 0) 
+            return -1;
+        job_set_stopped (job, 0);
+    }
+    fgjob = job;
+    tcsetpgrp (shell_terminal, job->pgid);
+    return EXIT_SUCCESS;
+}
+
+int shell_job_bg (int jobid, int output_redir, int error_redir) {
+    job_t *job;
+
+    job = (jobid == 0) ? get_curr_job () : get_job_id (jobid);
+
+    if (job == NULL) {
+        dprintf(error_redir, "fg: No such job\n");
+        return 1;
+    }
+    job->lch = ++shell_cnt;
+    print_job_cmd (job, output_redir);
+    write (output_redir, " &\n", 3);
+    if (job->stopped) {
+        if (kill (-job->pgid, SIGCONT) < 0) 
+            return -1;
+        job_set_stopped (job, 0);
+    }
+    return EXIT_SUCCESS;
+}
+
+void shell_exit () {
+    hexit = 1;
+    close (shell_terminal);
+}
+
+
+int shell_job_fg (int jobid, int output_redir, int error_redir) {
+    job_t *job;
+
+    job = (jobid == 0) ? get_curr_job () : get_job_id (jobid);
+
+    if (job == NULL) {
+        dprintf(error_redir, "fg: No such job\n");
+        return 1;
+    }
+    print_job_cmd (job, output_redir);
+    write (output_redir, "\n", 1);
+
+    sysfail (set_fgjob (job) < 0, -1);
+
+    run_fgjob ();
+
+    return EXIT_SUCCESS;
+}
+
 
 /*
 returns -1 in case of error (cmd coundn't be executed) 
@@ -212,7 +298,7 @@ int create_job (const char *cmd) {
     /*input redir file*/
     for (i=0; i<3; ++i) {
         if (cmd_line->io[i] != NULL) {
-            /*printf ("%d %s\n", i, (cmd_line->io[i])); */
+
             io[i] = open (cmd_line->io[i], iofl[i], S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 
             if (io[i] < 0) {
@@ -251,7 +337,7 @@ int create_job (const char *cmd) {
     /*now we can consider the job is successfully begin executed*/
     
     if (!cmd_line->is_nonblock)
-        fg_job = job;
+        fgjob = job;
 
     LIST_PUSH (job_list_head, job_list_tail, job);
 

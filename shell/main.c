@@ -34,13 +34,16 @@ int main (int argc, char *argv[]) {
     int ret;
     char hinter = 0;
 
+    /*I'm in love with extern ;)*/
+    extern char hexit;
+
     ret = shell_init() ;
 
     if (ret < 0) {
         return -1;
     }
 
-    while (!feof (stdin)) {
+    while (!feof(stdin) && !hexit) {
 
         if (!hinter)
             printf ("$ ");
@@ -56,7 +59,7 @@ int main (int argc, char *argv[]) {
             puts ("Syntax Error!");
         }
         else if (IS_CMD_LINE_OK (ret))
-            run_fg_job();
+            run_fgjob();
     }
 
 
