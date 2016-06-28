@@ -87,7 +87,7 @@ int shell_init (char is_interactive) {
 }
 
 int shell_nintve (const char *cmd) {
-    return EXIT_SUCCESS;
+	return 0;
 }
 
 

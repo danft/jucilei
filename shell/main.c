@@ -52,6 +52,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
         case 'c':
             arguments->command = 1;
             arguments->argv[0] = arg;
+			arguments->argv[1] = NULL;
             break;
         case ARGP_KEY_ARG:
             arguments->argv[1+state->arg_num] = arg;
@@ -81,7 +82,7 @@ int main (int argc, char *argv[]) {
     /*this means will run a non-interactive shell*/
     if (arguments.command == 1) {
         for (j = 0; arguments.argv[j] != NULL; j++)
-            printf ("%s\n", arguments.argv[j]);
+            printf ("x%s\n", arguments.argv[j]);
     }
 
     ret = shell_init(arguments.command == 0);
@@ -91,9 +92,10 @@ int main (int argc, char *argv[]) {
         for (j = 0; arguments.argv[j] != NULL; ++j) {
             strcpy (cmd + boff, arguments.argv[j]);
             boff += strlen (arguments.argv[j]);
+			cmd[boff++] = ' ';
+			cmd[boff] = '\0';
         }
-        puts (cmd);
-        /*ret = shell_nintve (cmd); */
+        ret = create_job(cmd);  
         return 0;
     }
 

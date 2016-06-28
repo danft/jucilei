@@ -19,7 +19,7 @@ PROJECT = runcmd
 PREFIX = ./local
 
 CC = gcc
-CPP_FLAGS = -Wall --ansi --pedantic-errors -D_POSIX_C_SOURCE=200809L
+CPP_FLAGS = -Wall --pedantic-errors -D_POSIX_C_SOURCE=200809L
 C_FLAGS = -g
 LD_FLAGS =
 MAKE = make
