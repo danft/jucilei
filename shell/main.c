@@ -72,18 +72,11 @@ int main (int argc, char *argv[]) {
     int ret, j;
     char hinter = 0;
 
-    /*I'm in love with extern ;)*/
     extern char hexit;
     struct arguments arguments;
     arguments.command = 0;
 
     argp_parse (&argp, argc, argv, 0, 0, &arguments);
-
-    /*this means will run a non-interactive shell*/
-    if (arguments.command == 1) {
-        for (j = 0; arguments.argv[j] != NULL; j++)
-            printf ("x%s\n", arguments.argv[j]);
-    }
 
     ret = shell_init(arguments.command == 0);
 
@@ -96,7 +89,11 @@ int main (int argc, char *argv[]) {
 			cmd[boff] = '\0';
         }
         ret = create_job(cmd);  
-        return 0;
+		if (IS_SYNTAX_ERROR (ret)) 
+			dprintf (STDERR_FILENO, "Syntax Error\n");
+		else if (IS_CMD_LINE_OK (ret))
+			run_fgjob();
+		return ret;
     }
 
     if (ret < 0) {
@@ -116,9 +113,8 @@ int main (int argc, char *argv[]) {
         }
 
         ret = create_job (cmd);
-        if (IS_SYNTAX_ERROR (ret)) {
-            puts ("Syntax Error!");
-        }
+        if (IS_SYNTAX_ERROR (ret)) 
+			dprintf (STDERR_FILENO, "Syntax Error\n");
         else if (IS_CMD_LINE_OK (ret))
             run_fgjob();
     }
