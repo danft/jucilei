@@ -22,20 +22,67 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <argp.h>
 #include "parser.h"
 #include "process.h"
 #include "job.h"
 #include "shell.h"
 
+const char *argp_program_version = "jucilei 0.1";
+
+static char doc [] =
+"Jucilei is an attempt to implement a POSIX shell";
+
+static char args_doc[] = "ARG1";
+
+static struct argp_option options [] = {
+    {"command", 'c', "cmd", 0, "alksdfjaldkj"},
+    {0}
+};
+
+struct arguments {
+    int command;
+    char *argv[256];
+};
+
+static error_t parse_opt (int key, char *arg, struct argp_state *state) {
+    struct arguments *arguments = state->input;
+    arguments->argv[state->argc] = NULL;
+    switch (key) {
+        case 'c':
+            arguments->command = 1;
+            arguments->argv[0] = arg;
+            break;
+        case ARGP_KEY_ARG:
+            arguments->argv[1+state->arg_num] = arg;
+            arguments->argv[2+state->arg_num] = NULL;
+            break;
+        default:
+            return ARGP_ERR_UNKNOWN;
+    }
+    return 0;
+}
+
+static struct argp argp = {options,parse_opt,args_doc,doc};
 
 int main (int argc, char *argv[]) {
 
     char cmd[256];
-    int ret;
+    int ret, j;
     char hinter = 0;
 
     /*I'm in love with extern ;)*/
     extern char hexit;
+    struct arguments arguments;
+    arguments.command = 0;
+
+    argp_parse (&argp, argc, argv, 0, 0, &arguments);
+
+    /*this means will run a non-interactive shell*/
+    if (arguments.command == 1) {
+        for (j = 0; arguments.argv[j] != NULL; j++)
+            printf ("a%s\n", arguments.argv[j]);
+    }
 
     ret = shell_init() ;
 
