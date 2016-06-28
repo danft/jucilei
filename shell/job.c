@@ -95,7 +95,7 @@ char job_completed (job_t *job) {
 /*
 the caller is in charge of waiting for the processes created! 
  */
-int run_job (job_t *job, char is_fg) {
+int run_job (job_t *job) {
     qelem *ptr;
     process_t *proc;
     pid_t pid, pgid = 0;
@@ -119,7 +119,7 @@ int run_job (job_t *job, char is_fg) {
 
         proc = (process_t *)ptr->q_data;
 
-        pid = run_process (proc, pgid, input_redir, output_redir, error_redir, is_fg);
+        pid = run_process (proc, pgid, input_redir, output_redir, error_redir);
         /*0 indicates this process is a builtin function*/
         if (pid != 0) {
             pgid = (!pgid) ? pid : pgid;
@@ -137,9 +137,8 @@ int run_job (job_t *job, char is_fg) {
 
         input_redir = pipefd[0];
     }
+
     job->pgid = pgid;
-    if (is_fg)
-        tcsetpgrp (STDIN_FILENO, job->pgid);
 
     return EXIT_SUCCESS;
 }

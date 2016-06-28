@@ -60,7 +60,7 @@ void job_set_stopped (job_t *job, char vsto);
 /*
 runs every process in the pipeline 
  */
-int run_job (job_t *job, char is_fg);
+int run_job (job_t *job);
 
 /*prints the entire job command line into fdes*/
 void print_job_cmd (job_t *job, int fdes) ; 

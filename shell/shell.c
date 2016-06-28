@@ -34,10 +34,8 @@
 
 #define IS_FG_JOB(job) (((job_t*)(job))==fgjob) 
 
-/**/
+/*the head and tail of the jobs list*/
 qelem *job_list_head, *job_list_tail;
-
-/*the top element is always the one that got modified the latest*/
 
 /*
    job which is currently running as foreground
@@ -47,32 +45,48 @@ job_t *fgjob = NULL;
 pid_t shell_pgid;
 /*file descriptor from which the shell interacts with*/
 int shell_terminal;
+
+/*this is set to 1 whenever a "exit" or "quit" command is entered*/
 char hexit;
 
-size_t shell_cnt; /*used to identify the last changed process*/
+/*used to identify the last changed process*/
+size_t shell_cnt;
+
+/*1 if sheel is interactive*/
+char shell_intve;
 
 /*
 returns -1 in case of failure 
  */
-int shell_init () {
+int shell_init (char is_interactive) {
+    shell_intve = is_interactive;
     hexit = 0;
     fgjob = NULL;
     shell_cnt = 0;
     job_list_head = job_list_tail = NULL;
-    signal (SIGINT, SIG_IGN);
-    signal (SIGQUIT, SIG_IGN);
-    signal (SIGTSTP, SIG_IGN);
-    signal (SIGTTIN, SIG_IGN);
-    signal (SIGTTOU, SIG_IGN);
-    signal (SIGCHLD, SIG_IGN);
+
+    if (shell_intve) {
+        signal (SIGINT, SIG_IGN);
+        signal (SIGQUIT, SIG_IGN);
+        signal (SIGTSTP, SIG_IGN);
+        signal (SIGTTIN, SIG_IGN);
+        signal (SIGTTOU, SIG_IGN);
+        signal (SIGCHLD, SIG_IGN);
+    }
     shell_terminal = STDIN_FILENO;
     shell_pgid = getpid ();
 
     sysfail (setpgid (shell_pgid, shell_pgid) < 0, -1);
 
-    /*takes controll of the terminal as a foreground procces group*/
-    tcsetpgrp (shell_terminal, shell_pgid);
+    if (shell_intve) {
+        /*takes controll of the terminal as a foreground procces group*/
+        tcsetpgrp (shell_terminal, shell_pgid);
+    }
 
+    return EXIT_SUCCESS;
+}
+
+int shell_nintve (const char *cmd) {
     return EXIT_SUCCESS;
 }
 
@@ -147,7 +161,10 @@ int run_fgjob() {
     }
 
     fgjob = NULL;
-    tcsetpgrp (STDIN_FILENO, shell_pgid); 
+
+    if (shell_intve) {
+        tcsetpgrp (STDIN_FILENO, shell_pgid); 
+    }
     /*here we would have to set up terminal options*/
 
     return EXIT_SUCCESS;
@@ -327,7 +344,7 @@ int create_job (const char *cmd) {
     }
 
     /*running (need to know if it's foreground)*/
-    aux = run_job (job, cmd_line->is_nonblock == 0);
+    aux = run_job (job);
 
     /*problem with running the job*/
     if (aux == -1) {
@@ -336,8 +353,11 @@ int create_job (const char *cmd) {
     }
     /*now we can consider the job is successfully begin executed*/
     
-    if (!cmd_line->is_nonblock)
+    if (!cmd_line->is_nonblock) {
         fgjob = job;
+        if (shell_intve)
+            tcsetpgrp (shell_terminal, job->pgid);
+    }
 
     LIST_PUSH (job_list_head, job_list_tail, job);
 

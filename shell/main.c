@@ -36,7 +36,7 @@ static char doc [] =
 static char args_doc[] = "ARG1";
 
 static struct argp_option options [] = {
-    {"command", 'c', "cmd", 0, "alksdfjaldkj"},
+    {"command", 'c', "cmd", 0, "Execute jucilei in the non-interactive form"},
     {0}
 };
 
@@ -81,10 +81,21 @@ int main (int argc, char *argv[]) {
     /*this means will run a non-interactive shell*/
     if (arguments.command == 1) {
         for (j = 0; arguments.argv[j] != NULL; j++)
-            printf ("a%s\n", arguments.argv[j]);
+            printf ("%s\n", arguments.argv[j]);
     }
 
-    ret = shell_init() ;
+    ret = shell_init(arguments.command == 0);
+
+    if (arguments.command == 1) { /**/
+        size_t boff = 0;
+        for (j = 0; arguments.argv[j] != NULL; ++j) {
+            strcpy (cmd + boff, arguments.argv[j]);
+            boff += strlen (arguments.argv[j]);
+        }
+        puts (cmd);
+        /*ret = shell_nintve (cmd); */
+        return 0;
+    }
 
     if (ret < 0) {
         return -1;
@@ -96,6 +107,7 @@ int main (int argc, char *argv[]) {
             printf ("$ ");
         hinter = 0;
 
+        /*this happens when we are block waiting and then comes a signal*/
         if (fgets (cmd, 256, stdin)==NULL) {
             hinter = 1;
             continue;

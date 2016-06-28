@@ -110,7 +110,7 @@ void release_process (process_t *proc) {
 }
 
 /*if pid is 0, then it's a builtin function*/
-pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redir, int error_redir, char is_fg) {
+pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redir, int error_redir) {
     pid_t pid;
     int builtin_id;
     builtin_id = chk_builtincmd (proc);
@@ -160,10 +160,8 @@ pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redi
         execvp (proc->argv[0], proc->argv);
 
         /*we have something wrong */
-        write (output_redir, proc->argv[0], strlen (proc->argv[0]));
-        write (output_redir, ": ", 2);
-        write (output_redir, strerror (errno), strlen (strerror (errno)));
-        write (output_redir, "\n", 1);
+        dprintf (output_redir, "%s: %s\n", proc->argv[0], strerror (errno));
+
         release_process (proc);
 
         exit (RUN_PROC_FAILURE);

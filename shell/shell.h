@@ -27,7 +27,15 @@
 #include "job.h"
 
 
-int shell_init (void);
+
+/*
+you have to inform if the sheel will be interactive (with job control) or non-interactive 
+ */
+int shell_init (char is_interactive);
+
+int shell_nintve (const char *cmd);
+
+
 /*
 returns -1 in case of error (cmd coundn't be executed) 
  */

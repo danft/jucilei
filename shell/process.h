@@ -44,6 +44,6 @@ this function alters the pid attribute in proc
 returns the pid of the child
 (input,output,error)_redir are file descriptors
  */
-pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redir, int error_redir, char is_fg);
+pid_t run_process (process_t *proc, pid_t pgid, int input_redir, int output_redir, int error_redir);
 
 #endif
